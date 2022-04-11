@@ -9,80 +9,89 @@ using Microsoft.Maui.Handlers;
 namespace ZXing.Net.Maui
 {
 
-	public partial class CameraViewHandler : ViewHandler<ICameraView, NativePlatformCameraPreviewView>
-	{
-		public static PropertyMapper<ICameraView, CameraViewHandler> CameraViewMapper = new()
+    public partial class CameraViewHandler : ViewHandler<ICameraView, NativePlatformCameraPreviewView>
+    {
+        public static PropertyMapper<ICameraView, CameraViewHandler> CameraViewMapper = new()
+        {
+            [nameof(ICameraView.IsTorchOn)] = (handler, virtualView) => handler.cameraManager.UpdateTorch(virtualView.IsTorchOn),
+            [nameof(ICameraView.CameraLocation)] = (handler, virtualView) => handler.cameraManager.UpdateCameraLocation(virtualView.CameraLocation)
+        };
+
+        public static CommandMapper<ICameraView, CameraViewHandler> CameraCommandMapper = new()
+        {
+            [nameof(ICameraView.Focus)] = MapFocus,
+            [nameof(ICameraView.AutoFocus)] = MapAutoFocus,
+        };
+
+        CameraManager cameraManager;
+
+        public event EventHandler<CameraFrameBufferEventArgs> FrameReady;
+
+        public CameraViewHandler() : base(CameraViewMapper)
+        {
+        }
+
+        public CameraViewHandler(PropertyMapper mapper = null) : base(mapper ?? CameraViewMapper)
+        {
+        }
+#if ANDROID
+        protected override AndroidX.Camera.View.PreviewView CreatePlatformView()
+        {
+
+#elif IOS || MACCATALYST13_1_OR_GREATER
+		protected override UIKit.UIView CreatePlatformView()
 		{
-			[nameof(ICameraView.IsTorchOn)] = (handler, virtualView) => handler.cameraManager.UpdateTorch(virtualView.IsTorchOn),
-			[nameof(ICameraView.CameraLocation)] = (handler, virtualView) => handler.cameraManager.UpdateCameraLocation(virtualView.CameraLocation)
-		};
+#endif
+            if (cameraManager == null)
+                cameraManager = new(MauiContext, VirtualView?.CameraLocation ?? CameraLocation.Rear);
 
-		public static CommandMapper<ICameraView, CameraViewHandler> CameraCommandMapper = new()
-		{
-			[nameof(ICameraView.Focus)] = MapFocus,
-			[nameof(ICameraView.AutoFocus)] = MapAutoFocus,
-		};
-		
-		CameraManager cameraManager;
+            var v = cameraManager.CreateNativeView();
+            return v;
+        }
 
-		public event EventHandler<CameraFrameBufferEventArgs> FrameReady;
 
-		public CameraViewHandler() : base(CameraViewMapper)
-		{
-		}
+        protected override async void ConnectHandler(NativePlatformCameraPreviewView nativeView)
+        {
+            base.ConnectHandler(nativeView);
 
-		public CameraViewHandler(PropertyMapper mapper = null) : base(mapper ?? CameraViewMapper)
-		{
-		}
+            if (await cameraManager.CheckPermissions())
+                cameraManager.Connect();
 
-		protected override NativePlatformCameraPreviewView CreateNativeView()
-		{
-			if (cameraManager == null)
-				cameraManager = new(MauiContext, VirtualView?.CameraLocation ?? CameraLocation.Rear);
-			var v = cameraManager.CreateNativeView();
-			return v;
-		}
+            cameraManager.FrameReady += CameraManager_FrameReady;
+        }
 
-		protected override async void ConnectHandler(NativePlatformCameraPreviewView nativeView)
-		{
-			base.ConnectHandler(nativeView);
+        void CameraManager_FrameReady(object sender, CameraFrameBufferEventArgs e)
+            => FrameReady?.Invoke(this, e);
 
-			if (await cameraManager.CheckPermissions())
-				cameraManager.Connect();
+        protected override void DisconnectHandler(NativePlatformCameraPreviewView nativeView)
+        {
+            cameraManager.FrameReady -= CameraManager_FrameReady;
 
-			cameraManager.FrameReady += CameraManager_FrameReady;
-		}
+            cameraManager.Disconnect();
 
-		void CameraManager_FrameReady(object sender, CameraFrameBufferEventArgs e)
-			=> FrameReady?.Invoke(this, e);
+            base.DisconnectHandler(nativeView);
+        }
 
-		protected override void DisconnectHandler(NativePlatformCameraPreviewView nativeView)
-		{
-			cameraManager.FrameReady -= CameraManager_FrameReady;
+        public void Dispose()
+            => cameraManager?.Dispose();
 
-			cameraManager.Disconnect();
+        public void Focus(Point point)
+            => cameraManager?.Focus(point);
 
-			base.DisconnectHandler(nativeView);
-		}
+        public void AutoFocus()
+            => cameraManager?.AutoFocus();
 
-		public void Dispose()
-			=> cameraManager?.Dispose();
+        public static void MapFocus(CameraViewHandler handler, ICameraView cameraBarcodeReaderView, object? parameter)
+        {
+            if (parameter is not Point point)
+                throw new ArgumentException("Invalid parameter", "point");
 
-		public void Focus(Point point)
-			=> cameraManager?.Focus(point);
+            handler.Focus(point);
+        }
 
-		public void AutoFocus()
-			=> cameraManager?.AutoFocus();
+        public static void MapAutoFocus(CameraViewHandler handler, ICameraView cameraBarcodeReaderView, object? parameters)
+            => handler.AutoFocus();
 
-		public static void MapFocus(CameraViewHandler handler, ICameraView cameraBarcodeReaderView, object? parameter)
-		{
-			if (parameter is not Point point)
-				throw new ArgumentException("Invalid parameter", "point");
 
-			handler.Focus(point);
-		}
-
-		public static void MapAutoFocus(CameraViewHandler handler, ICameraView cameraBarcodeReaderView, object? parameters)
-			=> handler.AutoFocus();
-	}
+    }
 }

@@ -41,15 +41,23 @@ namespace ZXing.Net.Maui
 		protected Readers.IBarcodeReader BarcodeReader
 			=> Services.GetService<Readers.IBarcodeReader>();
 
-		protected override NativePlatformCameraPreviewView CreateNativeView()
+#if IOS || MACCATALYST
+		protected override UIKit.UIView CreatePlatformView()
 		{
-			if (cameraManager == null)
-				cameraManager = new(MauiContext, VirtualView?.CameraLocation ?? CameraLocation.Rear);
-			var v = cameraManager.CreateNativeView();
-			return v;
-		}
+		 
+#elif ANDROID
+        protected override AndroidX.Camera.View.PreviewView CreatePlatformView()
+        {
+#endif
+            if (cameraManager == null)
+                cameraManager = new(MauiContext, VirtualView?.CameraLocation ?? CameraLocation.Rear);
 
-		protected override async void ConnectHandler(NativePlatformCameraPreviewView nativeView)
+            return cameraManager.CreateNativeView();
+        }
+
+
+
+        protected override async void ConnectHandler(NativePlatformCameraPreviewView nativeView)
 		{
 			base.ConnectHandler(nativeView);
 
@@ -103,5 +111,7 @@ namespace ZXing.Net.Maui
 
 		public static void MapAutoFocus(CameraBarcodeReaderViewHandler handler, ICameraBarcodeReaderView cameraBarcodeReaderView, object? parameters)
 			=> handler.AutoFocus();
-	}
+
+     
+    }
 }
